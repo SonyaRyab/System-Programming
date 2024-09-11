@@ -1,0 +1,19 @@
+mkdir -p Work/"Лабораторная работа №1!" Work/Рябова Софья Андреевна
+chmod 771 Work/"Лабораторная работа №1!"
+chmod 200 Work/"Рябова Софья Андреевна"
+touch Work/"Text @1" Work/"Text \$2" Work/"Text #3"
+echo -e "Птица говорун отличается умом и сообразительностью! \nОтличается умом, отличается сообразительностью..." > Work/"Text @1"
+cp Work/"Text @1" Work/"Text \$2"
+mv Work/"Text \$2" Work/"Лабораторная работа №1!"/
+chmod 700 Work/"Рябова Софья Андреевна"/
+cp Work/"Text @1" Work/"Рябова Софья Андреевна"/
+gzip Work/"Text @1" Work/"Text #3"
+tar -cf MyAchiv.tar.gz Work/*.gz
+gzip -d Work/"Text @1.gz" Work/"Text #3.gz"
+head -n 1 Work/"Text @1" >> Work/"Text #3"
+echo "Будь осторожен! Преступник вооружен!" >> Work/"Text #3"
+tac Work/"Text @1" > Work/"Рябова Софья Андреевна"/Result_one
+mv Work/"Рябова Софья Андреевна"/Result_one Work/"Рябова Софья Андреевна"/Result_two
+cat Work/"Рябова Софья Андреевна"/T* >> Work/"Лабораторная работа №1!"/Result_3
+uname -a >> Work/"Лабораторная работа №1!"/Result_3
+date >> Work/"Лабораторная работа №1!"/Result_3
