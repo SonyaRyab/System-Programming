@@ -1,0 +1,12 @@
+cd RK1
+ps aux > /workspaces/System-Programming/RK1/sandbox/Task_1
+mkdir sandbox
+cd sandbox
+mkdir sanbox-2
+mv /workspaces/System-Programming/RK1/sandbox/Task_2 /workspaces/System-Programming/RK1/sandbox/sandbox-2
+mv /workspaces/System-Programming/RK1/sandbox/Task_3 /workspaces/System-Programming/RK1/sandbox/sandbox-2
+cp /bin/ls Task_2
+mv /workspaces/System-Programming/RK1/sandbox/Task_2 myls
+chmod 544 myls
+uname -a
+echo "$(uname -a)" >> Task_3
