@@ -26,10 +26,6 @@ format ELF64
 	extrn timeout
 	extrn addchnstr   ;вывод строки
 
-
-
-	section '.bss' writable
-
 	section '.data' writable
 	current_x dq 0
 	current_y dq 0
@@ -62,8 +58,6 @@ _start:
 	call refresh
 	call noecho
 	call cbreak
-
-	
     
 ;; Размеры экрана
 	mov rdi, [stdscr]

@@ -7,8 +7,8 @@ int main() {
 
     int lcm = 37 * 13; 
     int count = n / lcm;
-
-    printf("%d/n", count);
-
+    printf("Количество чисел: ");
+    printf("%d", count);
+    printf("\n");
     return 0;
 }
