@@ -11,6 +11,8 @@ section '.data' writeable
   cr db 0xa, 0
   n dq 0
   avg dq 0
+  sum dq 0
+  
 section '.bss' writable
 
   buffer rb 100
@@ -95,7 +97,10 @@ _start:
    
      cmp rax,0
      je _write
-      
+      ;mov rax, [avg]
+      ;mov rsi, buffer
+      ;call number_str
+      ;call print_str
      jmp .main_loop
     
 _bind_error:
@@ -124,15 +129,16 @@ _read:
       mov [x], rax
       mov r10, rax
       
-      mov rax, [avg]
-      mov rcx, [n]
-      mul rcx
+      mov rax, [sum]
+      xor rdx, rdx
       add rax, r10
-      adc rdx, 0
+      ;adc rdx, 0
+      mov [sum], rax
+      mov rcx, [n]
       inc rcx
       div rcx
-      mov [avg], rax
       mov [n], rcx
+      mov [avg], rax
       jmp _read
       
 _print_avg:

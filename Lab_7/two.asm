@@ -12,8 +12,8 @@ THREAD_FLAGS=2147585792
 
 section '.data' writable
 
-n dq 12
-arr dq 8, 1, 1, 2, 2, 3, 4, 5, 6, 7, 10, 120
+n dq 10
+arr dq 6, 1, 2, 3, 4, 5, 6, 7, 6, 200
 
 msg_avg  db 'Average: '
 buf_avg db 32 dup(0)
