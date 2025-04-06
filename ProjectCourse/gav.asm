@@ -1,16 +1,15 @@
 format ELF64
 public _start
 
-section '.data'
-gav_str dq 0x0A0D30564147
+section '.data' writable
+gav_str db 'gav', 10   ;enter
 
-section '.bss'
-
+section '.bss' writable
 
 ;Ofs Len Meaning
 ;0    8   id 
 
-section '.text'
+section '.text' executable
 
 _start:
     call gav
@@ -20,16 +19,18 @@ _start:
     
 gav:
 push rax
+push rcx
 push rdx
 push rsi
 push rdi
 mov rax, 1
-mov rdi, 2
+mov rdi, 1
 mov rsi, gav_str
-mov rdx, 5
+mov rdx, 4
 syscall
 pop rdi
 pop rsi
 pop rdx
+pop rcx
 pop rax
 ret
