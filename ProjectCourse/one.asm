@@ -7,7 +7,7 @@ section '.data' writable
     m dq 8 ;width
     cr dq 0A0Dh
     gav_str dq 0A30564147h 
-    rnd dq 0A30564147h
+    rnd dq 0A30564147h, 0, 0, 0
 
 section '.bss' writable
     buffer rb 2600   ;строка-изображение  
@@ -34,24 +34,21 @@ section '.bss' writable
 section '.text' executable
 
 _start:
-    call gav
-    mov rax, m
-    call print_uint64
-    call newline
+    mov rax, 64h  ;100 = times
+    mov rdi, rnd 
+    syscall
+    mov rdx, rax
+    shr rdx, 32
+    xor rax, rdx
+    xor qword[rnd], rax
     mov rdi, rooms
     call generate0
-    call dump
-    mov byte[gav_str+3], 31h
-    call gav
-    mov rax, [m]
-    call print_uint64
-    call newline
+;    call dump
     mov rsi, rooms
     call lock_doors
+    call solve
     call print_field
-    mov byte[gav_str+3], 32h
-    call gav
-    call test_rand
+;    call test_rand
     xor rdi, rdi
     mov rax, 60
     syscall
@@ -239,7 +236,8 @@ g0_l3d:
     dec rdx
     jnz g0_l1
     ret
-
+    
+    
 print_field:
     mov rdx, [n]
 pf_l1:
@@ -291,6 +289,14 @@ pf_NoWayWest:
     lodsq 
     lodsq
     lodsq   ;add rsi, 24
+    add al, 23h   ;probel
+    cmp al, 23h   ;#
+    je pf_lx
+    add al, 06h 
+pf_lx:
+    shl rax, 28h ;40
+    or r10, rax
+
     mov qword[rdi], r8
     mov qword[rdi+65], r9
     mov qword[rdi+130], r10
@@ -322,6 +328,70 @@ pf_l3:
 pf_l4:
     ret
 
+
+;on entry: rsi (текущая комната указатель), rax, rdi 
+solve:
+    push rsi
+    push rax
+    
+    mov byte[rsi+56], 1  ;текущая комната как посещенная 
+    lodsq  ;повернулись к north 
+    call try_enter ;если дверь есть и открывается, то заходим 
+    lodsq
+    call try_enter
+    lodsq 
+    call try_enter
+    lodsq 
+    call try_enter
+    
+    pop rax
+    pop rsi
+    ret
+
+;попытка зайти в комнату 
+;on entry: rax, 
+try_enter: 
+    or rax, rax
+    jnz te_l1
+    ret
+te_l1:
+    push rsi
+    push rax
+    mov rsi, rax
+    mov al, byte[rsi+56]
+    or al, al
+    jnz te_l2
+    mov al, 1
+    mov byte[rsi+56], al
+    call solve
+te_l2:
+    pop rax
+    pop rsi
+    ret
+    
+    
+;подсчет закрытых дверей 
+check_three:
+    push rax
+    push rcx
+    push rdx
+    push rsi
+    xor rdx, rdx
+    mov rcx, 4
+ct_l0:
+    lodsq
+    or rax, rax
+    jnz ct_l1
+    inc rdx
+ct_l1:
+    loop ct_l0
+    cmp rdx, 1  
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+
 ;рандомное закрытие дверей 
 ;on entry: rsi - указатель описания комнат 
 lock_doors:
@@ -337,106 +407,104 @@ lock_doors:
 ld_l1:
     push rdx 
     mov rcx, [m]
-    mov byte[gav_str+3], '!'
-    call newline
-    call gav
-    call newline
-    mov rax, rcx
-    call print_uint64
-    call newline
-
 ld_l2:
     push rcx
+
+    call check_three
+    jb ld_north
+    
+    add rsi, 64
+    jmp ld_l3a
+
 ld_north:
+    mov rdi, [rsi]
+
+    or rdi, rdi
+    jz ld_east
+
+    push rsi
+    mov rsi, rdi
+    call check_three
+    pop rsi
+    jb ld_east
+ 
     call rand 
     cmp al, 8 
     jb ld_east   ;below
-    mov rdi, [rsi]
-    or rdi, rdi
-    jz ld_east
     
-    mov [gav_str+3], 'N'
-    call gav 
-    mov rax, rdi
-    call print_uint64
-    call newline
-
     xor rbx, rbx
     mov [rdi+16], rbx
     mov [rsi], rbx
 
-    mov [gav_str+3], 'n'
-    call gav
 ld_east:
     add rsi, 8
-    call rand
-    cmp al, 8
-    jb ld_south
     mov rdi, [rsi]
+    
     or rdi, rdi
     jz ld_south
 
-    mov [gav_str+3], 'E'
-    call gav
-    mov rax, rdi
-    call print_uint64
-    call newline
+    push rsi
+    mov rsi, rdi
+    call check_three
+    pop rsi
+    ja ld_south  ;jump above
+
+    call rand
+    cmp al, 8
+    jb ld_south
 
     xor rbx, rbx
     mov [rdi+24], rbx
     mov [rsi], rbx
     
-    mov [gav_str+3], 'e'
-    call gav
 ld_south:
     add rsi, 8
-    call rand
-    cmp al, 8
-    jb ld_west
     mov rdi, [rsi]
+
     or rdi, rdi
     jz ld_west
     
-    mov [gav_str+3], 'S'
-    call gav
-    mov rax, rdi
-    call print_uint64
-    call newline
+    push rsi
+    mov rsi, rdi
+    call check_three
+    pop rsi
+    ja ld_west
 
+    call rand
+    cmp al, 8
+    jb ld_west
+    
     xor rbx, rbx
     mov [rdi], rbx
     mov [rsi], rbx
 
-    mov [gav_str+3], 's'
-    call gav
 ld_west:
     add rsi, 8
+    mov rdi, [rsi]
+
+    or rdi, rdi
+    jz ld_north_again
+    
+    push rsi
+    mov rsi, rdi
+    call check_three
+    pop rsi
+    ja ld_north_again
+
     call rand
     cmp al, 8
     jb ld_north_again
-    mov rdi, [rsi]
-    or rdi, rdi
-    jz ld_north_again
-
-    mov [gav_str+3], 'W'
-    call gav
-    mov rax, rdi
-    call print_uint64
-    call newline
 
     xor rbx, rbx
     mov [rdi+8], rbx
     mov [rsi], rbx
 
-    mov [gav_str+3], 'w'
-    call gav
 ld_north_again:
-    add rsi, 32
+    add rsi, 8+32
+
+ld_l3a:
     pop rcx
-    call newline
-    mov rax, rcx
-    call print_uint64
-    call newline
+
     dec rcx
     jz ld_l3
     jmp ld_l2
@@ -456,7 +524,6 @@ ld_l4:
 
 
 ;On entry: rax
-
 print_uint64:
     push rdx
     push rax
@@ -488,4 +555,3 @@ pu64_l1:
     pop rax
     pop rdx
     ret
-    
