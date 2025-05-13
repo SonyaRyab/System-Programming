@@ -1,0 +1,53 @@
+1E
+040193Consider the code: EA 00 00 FF FF. What does this instruction do?
+A. Format your hard disk. +
+B. Restart the system. -
+C. Kill the user. -
+D. Nothing -#
+040258What is the right syscall to end a program in Linux x86-64?
+A. 01h +
+B. 4Ch -
+C. 3Eh -
+D. 60h - #
+0401In assembler subtraction command:
+A. add -
+B. sub -
+C. mul +
+D. div -#
+0403Bit depth of EAX is:
+A. 4 -
+B. 8 -
+C. 16 +
+D. 32 -#
+0403jna in assembler is:
+A. end of program
+B. jump if not equal -
+C. jump if above +
+D. jump if not above - #
+0402Minimum address unit is:
+A. bit +
+B. word - 
+C. byte - 
+D. qubit - #
+0403What does lodsb do?
+A.  +
+B. -
+C. -
+D. loads string byte; AL := byte at [RSI]; RSI := RSI + 1 - # 
+0400What does shr do?
+A.  shift right; destination: the value to shift;
+count: how many positions to shift -
+B. -
+C. +
+D. - #
+0400What does this part mean: mov rax, qword[rbx+16]
+A. Loads a 64-bit value from memory at an address 16 bytes higher 
+than specified in rbx into the rax register -
+B.  -
+C.  -
+D. + #
+0402Hexadecimal number ends with:
+A. D -
+B. B +
+C. H - 
+D. Q - # 

@@ -8,6 +8,29 @@ section '.data' writable
     cr dq 0A0Dh
     gav_str dq 0A30564147h 
     rnd dq 0A30564147h, 0, 0, 0
+    msg_stuknulis db 24, 'You have hit the wall.', 13, 10
+    msg_been_there db 28, 'You have been in this room', 13, 10
+    clue_msg1 db "If you venture to the #"
+    clue_msgN db "North: #"
+    clue_msgE db "East: #"
+    clue_msgS db "South: #"
+    clue_msgW db "West: #"
+    clue_msg2 db " steps to the goal.", 13, 10, "#"
+    clue_msg3 db "No way.", 13, 10, "#"
+    clue_msg_lst dq clue_msgW, clue_msgS, clue_msgE, clue_msgN  ;указатели на начала строк подсказок
+
+    ;сделать обращение по имени 
+
+    msg_win db 18, 'Congratulations!', 13, 10
+    room_descr1 db 27, 'You are in the room #  .', 13, 10 ;32 bytes ;enter ;27 - length
+    room_descr2 db 20, 'It has doors to the ' ;20 bytes
+    r_east db 4, 'East'
+    r_west db 4, 'West'
+    r_north db 5, 'North'
+    r_south db 5, 'South'
+    r_comma db 2, ', '
+    r_dot db 3, '.', 13, 10  ;. enter
+    room_qst db 33, 'Where would you go? (E, N, W, S) ' ;33 bytes
 
 section '.bss' writable
     buffer rb 2600   ;строка-изображение  
@@ -15,6 +38,9 @@ section '.bss' writable
     tmp rq 1
     tmp2 rq 128
     pu64_buf rb 16
+    dlg_buf rb 16
+    test_buf rb 8
+    ptr_buf rb 256  ;список указателей на вопросы, 32 шт 1 байт-кол-во, 2 байт-№ верного ответа 
 
 ;комната 6 байта + 2 байта стенки 
 ;5*65 байт - 1 ряд комнат, 1 комната - 6 байт
@@ -43,12 +69,17 @@ _start:
     xor qword[rnd], rax
     mov rdi, rooms
     call generate0
-;    call dump
     mov rsi, rooms
     call lock_doors
+    mov rdi, rooms+64*63   ;смещение на последнюю комнату от начала массива rooms 
+    mov rdx, 1
     call solve
     call print_field
-;    call test_rand
+    mov rbx, rooms
+    mov r13, 0000000100000001h  ;двойные слова
+    call dialogue
+
+;   call test_rand
     xor rdi, rdi
     mov rax, 60
     syscall
@@ -137,6 +168,241 @@ newline:
     pop rax
     ret
 
+;rsi - указатель на Паскалевскую строку 
+print_pascal_str:
+    push rax
+    push rdx
+    push rsi
+    push rdi
+    lodsb   ;прочитать 1 байт по адресу rsi ; al - length rsi, -> rdx, rsi+1 - text str
+    movzx rdx, al   ;zero extend: страший разряд rdx=0
+    mov rax, 1
+    mov rdi, 1
+    syscall
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rax
+    ret
+
+;on entry
+;rbx - pointer to starting room 
+;r13 - target artifact (target id)
+dialogue:
+    push rax
+    push rbx 
+    push rdx
+    push rsi
+dlg_l1:
+    mov rax, [rbx+32]
+    cmp r13, rax  ;id, pointers on east, west, south, north
+    jne dlg_l2
+    jmp dlg_win 
+dlg_l2:
+    mov rdx, rax
+    shr rax, 24  ;y>>24  3 байт вправо ***y***x -> ******yx 
+    or rax, rdx
+    add rax, 3030h ; +00
+    mov word[room_descr1+22], ax  ;номер комнаты в строку 
+    mov rsi, room_descr1
+    call print_pascal_str
+    test qword[rbx+56], 80h   ;56 - краска; 80h - степень 2, 1 бит 
+    jz dlg_l2_no 
+    mov rsi, msg_been_there 
+    call print_pascal_str
+dlg_l2_no:  ;не были в комнате 
+    or qword[rbx+56], 80h   ;устанавливаем бит 80h, были в комнате 
+    mov rsi, room_descr2
+    call print_pascal_str
+    xor rdx, rdx
+dlg_l2n:
+    cmp qword[rbx], 0
+    jz dlg_l2e
+    mov rsi, r_north
+    call print_pascal_str
+    inc rdx
+dlg_l2e:
+    cmp qword[rbx+8], 0
+    jz dlg_l2s
+    or rdx, rdx
+    jz dlg_l2ee
+    mov rsi, r_comma
+    call print_pascal_str
+dlg_l2ee:
+    mov rsi, r_east
+    call print_pascal_str
+    inc rdx
+dlg_l2s:
+    cmp qword[rbx+16], 0
+    jz dlg_l2w
+    or rdx, rdx
+    jz dlg_l2ss
+    mov rsi, r_comma
+    call print_pascal_str
+dlg_l2ss:
+    mov rsi, r_south
+    call print_pascal_str
+    inc rdx
+dlg_l2w:
+    cmp qword[rbx+24], 0
+    jz dlg_l3
+    or rdx, rdx
+    jz dlg_l2ww
+    mov rsi, r_comma
+    call print_pascal_str
+dlg_l2ww:
+    mov rsi, r_west
+    call print_pascal_str
+    inc rdx
+dlg_l3:
+    mov rsi, r_dot
+    call print_pascal_str
+dlg_l3a:
+    mov rsi, room_qst
+    call print_pascal_str
+    mov rsi, dlg_buf 
+    xor rdi, rdi
+    mov rdx, 1
+dlg_l3b:
+    xor rax, rax
+    syscall
+    lodsb ;символ в al 
+    cmp al, 0Ah
+    je dlg_l3b
+    ;call print_uint64
+    cmp al, 60h
+    jna dlg_l3n
+    sub al, 20h  ;переводим маленькие буквы в большие 
+dlg_l3n:
+    cmp al, 'N'
+    jne dlg_l3e
+    mov rax, qword[rbx]
+    jmp dlg_l3z 
+dlg_l3e:
+    cmp al, 'E'
+    jne dlg_l3s
+    mov rax, qword[rbx+8]
+    jmp dlg_l3z
+dlg_l3s:
+    cmp al, 'S'
+    jne dlg_l3w
+    mov rax, qword[rbx+16]
+    jmp dlg_l3z
+dlg_l3w:
+    cmp al, 'W'
+    jne dlg_l3q
+    mov rax, qword[rbx+24]
+    jmp dlg_l3z
+dlg_l3q:
+    cmp al, 'Q'
+    jne dlg_l3h
+    jmp dlg_finish
+dlg_l3h:
+    cmp al, 'H'
+    jne dlg_l3a
+    call clue
+    jmp dlg_l3a
+dlg_l3z:
+    or rax, rax 
+    jnz dlg_l30
+    mov rsi, msg_stuknulis
+    call print_pascal_str
+    jmp dlg_l1
+dlg_l30:
+    mov rbx, rax 
+    jmp dlg_l1
+dlg_win:
+    mov rsi, msg_win
+    call print_pascal_str
+dlg_finish:
+    pop rsi
+    pop rdx
+    pop rbx
+    pop rax 
+    ret
+
+;on entry: rbx - pointer on starting room, r13 - target id
+clue:
+    push rax
+    push rbx 
+    push rcx
+    push rsi
+    push rdi
+    push r13
+    mov rdi, r13
+    mov rdx, 2
+    mov rcx, 4
+clue_l1:
+    mov rsi, clue_msg1
+    xor rax, rax 
+    call jailed_string
+    mov rsi, [clue_msg_lst+rcx*8-8]
+    call jailed_string  ;строка с #
+    mov rsi, [rbx+rcx*8-8]   ;4 3 2 1 -8
+    push rcx
+    push rsi
+    mov rsi, rooms 
+    mov rcx, 40h  ;64
+    call clear
+    pop rsi
+    pop rcx 
+    call solve 
+    cmp rax, 0
+    jnl clue_l2  ;if rax>0
+    mov rsi, clue_msg3
+    inc rax
+    call jailed_string
+    jmp clue_l3
+clue_l2:
+    call print_uint64  ;rax число 
+    mov rsi, clue_msg2
+    call jailed_string
+clue_l3:
+    loop clue_l1
+    pop r13
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rbx 
+    pop rax
+    ret
+
+;on entry: rsi - pointer on string, ah, al - characters to erase 
+jailed_string:
+    push rax
+    push rcx
+    push rsi
+    push rdi
+    push rsi  ;проходим строку до # считаем кол-во байт 
+    mov rcx, rax
+    xor rdx, rdx
+js_l1:
+    lodsb  ;смотрим байт rsi
+    cmp al, '#'
+    je js_l2
+    or rcx, rcx 
+    jz js_l1a
+    cmp al, cl ;al - rax, cl - rcx 
+    je js_l1b 
+    cmp al, ch ;ch - 2ой байт по меньшинству rcx 
+    jne js_l1a
+js_l1b:
+    mov byte[rsi-1], ' '  ;lodsb+1 байт 
+js_l1a:
+    inc rdx
+    jmp js_l1
+js_l2:
+    pop rsi
+    mov rdi, 1
+    mov rax, 1
+    syscall  ;print string 
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rax
+    ret
+
+;проверка создания лабиринта для отладки 
 dump:
     push rax
     push rcx
@@ -237,7 +503,6 @@ g0_l3d:
     jnz g0_l1
     ret
     
-    
 print_field:
     mov rdx, [n]
 pf_l1:
@@ -328,48 +593,115 @@ pf_l3:
 pf_l4:
     ret
 
-
-;on entry: rsi (текущая комната указатель), rax, rdi 
+;*
 solve:
+    push rbx   ;минимальная длина 
+    push rcx 
+    xor rcx, rcx 
+    xor rbx, rbx 
+    dec rbx   ;f = false (infinite distance) 
+    or rsi, rsi
+    jz slv_no_way
+    call solve_aux 
+slv_no_way:
+    mov rax, rbx 
+    pop rcx 
+    pop rbx
+    ret  
+
+;on entry: rsi (текущая комната указатель), rdx - color (степень 2), rdi - целевая комната (id), rcx (номер шага), rbx - минимальное количество шагов
+solve_aux:
+    mov rax, rcx 
+    call print_uint64
+    call newline
+    mov rax, rsi
+    call print_uint64
+    call newline
+    mov rax, rdi
+    call print_uint64
+    call newline
     push rsi
-    push rax
-    
-    mov byte[rsi+56], 1  ;текущая комната как посещенная 
+    cmp [rsi+32], rdi   ;адрес комнаты +32 = место id  
+    jne slv_l1
+    cmp rcx, rbx 
+    jnb slv_l0 
+    mov rbx, rcx 
+slv_l0:
+    mov rax, rbx
+    jmp slv_l2
+slv_l1:
+    or qword[rsi+56], rdx  ;текущая комната помечаем цветом (посещенная)
+slv_n:
     lodsq  ;повернулись к north 
     call try_enter ;если дверь есть и открывается, то заходим 
+    jnz slv_e
+    cmp rax, rbx 
+    jnb slv_e
+    mov rbx, rax  ;если найден более короткий путь 
+slv_e:
     lodsq
     call try_enter
+    jnz slv_s
+    cmp rax, rbx 
+    jnb slv_s
+    mov rbx, rax
+slv_s:
     lodsq 
     call try_enter
+    jnz slv_w
+    cmp rax, rbx 
+    jnb slv_w
+    mov rbx, rax
+slv_w:
     lodsq 
     call try_enter
-    
-    pop rax
-    pop rsi
+    jnz slv_l2
+    cmp rax, rbx 
+    jnb slv_l2
+    mov rbx, rax
+slv_l2:
+    mov rax, rbx 
+    pop rsi 
     ret
 
 ;попытка зайти в комнату 
-;on entry: rax, 
+;on entry: rax - комната, куда хотим войти, rdx - color 
 try_enter: 
     or rax, rax
     jnz te_l1
     ret
 te_l1:
     push rsi
-    push rax
     mov rsi, rax
-    mov al, byte[rsi+56]
-    or al, al
+    test qword[rsi+56], rdx   ;окрашена ли комната в цвет. Если цвет есть, то не заходим 
     jnz te_l2
-    mov al, 1
-    mov byte[rsi+56], al
-    call solve
+    push rcx 
+    inc rcx 
+    call solve_aux
+    pop rcx 
+    cmp rax, rax  ;zero flag 
 te_l2:
-    pop rax
     pop rsi
     ret
-    
-    
+
+;красим текущую rdx=2, solve, расстояние из сосед комнаты 
+;стереть цвет 
+;on entry: rsi - указатель на начала массива комнат, rdx - color который стереть, rcx - кол-во комнат, 
+clear:
+    push rsi 
+    push rcx
+    push rdx 
+    not rdx  ;инверсия  
+    add rsi, 56
+cl_l1:
+    and qword[rsi], rdx
+    add rsi, 64 
+    loop cl_l1   ;rcx - счетчик 
+    pop rdx
+    pop rcx
+    pop rsi 
+    ret
+
 ;подсчет закрытых дверей 
 check_three:
     push rax
@@ -521,7 +853,6 @@ ld_l4:
     pop rcx
     pop rax
     ret
-
 
 ;On entry: rax
 print_uint64:
