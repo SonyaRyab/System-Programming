@@ -40,7 +40,7 @@ section '.bss' writable
     rooms rq 2048
     tmp rq 1
     tmp2 rq 128
-    pu64_buf rb 16
+    pu64_buf rb 24   ;16+8 для 10-чных
     dlg_buf rb 16
     test_buf rb 8
     ptr_buf rb 256  ;список указателей на вопросы, 32 шт 1 байт-кол-во, 2 байт-№ верного ответа 
@@ -267,7 +267,7 @@ dlg_l3:
     mov rsi, score_msg
     call print_pascal_str
     mov rax, [score]
-    call print_uint64
+    call print_dec
     call newline
     mov [rbx+48], rax 
     or al, al 
@@ -373,7 +373,7 @@ clue_l1:
     call jailed_string
     jmp clue_l3
 clue_l2:
-    call print_uint64  ;rax число 
+    call print_dec  ;rax число 
     mov rsi, clue_msg2
     call jailed_string
 clue_l3:
@@ -922,3 +922,50 @@ pu64_l1:
     pop rax
     pop rdx
     ret
+
+;on entry: rax
+print_dec:
+    push rax
+    push rbx 
+    push rcx
+    push rdx
+    push rdi
+    push rsi
+    mov rdi, pu64_buf
+    mov rbx, 10
+    xor rcx, rcx    ;для syscall, кол-во цифр в частном 
+pd_l1:
+    xor rdx, rdx
+    div rbx       ;rdx - остаток, rax - частное 
+    add dl, 30h   ;+0 для печати на экран 
+    mov [rdi], dl  ;rdi - указатель на текущее положение строки для вывода, dl - младшмй байт rdx, остаток от деления на 10 
+    inc rdi 
+    inc rcx 
+    or rax, rax 
+    jnz pd_l1
+    mov rsi, pu64_buf   
+    dec rdi 
+;rsi - указатель на 1 цифру, rdi - на последнюю цифру 
+pd_l2:
+    cmp rsi, rdi 
+    jae pd_l3    ;if above or equal 
+    mov al, [rsi]  ;в al - 1я цифра (левая)
+    xchg al, [rdi]   ;замена al -> последняя цифра, первая al -> в последнюю rdi
+    mov [rsi], al   ;al - последняя, ее в 1ю цифру 
+    inc rsi 
+    dec rdi 
+    jmp pd_l2
+
+pd_l3:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, pu64_buf
+    mov rdx, rcx 
+    syscall   ;вывод 
+    pop rsi 
+    pop rdi 
+    pop rdx 
+    pop rcx 
+    pop rbx 
+    pop rax 
+    ret 

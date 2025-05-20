@@ -3,7 +3,7 @@
 A. Format your hard disk. +
 B. Restart the system. -
 C. Kill the user. -
-D. Nothing -#
+D. Nothing - #
 040258What is the right syscall to end a program in Linux x86-64?
 A. 01h +
 B. 4Ch -
