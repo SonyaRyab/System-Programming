@@ -3,11 +3,12 @@ public _start
 
 section '.data' writable
     ;start_room dq 8 dup(0) 
-    n dq 8 ;length
-    m dq 8 ;width
+    n dq 8    ;length
+    m dq 8    ;width
     cr dq 0A0Dh
     gav_str dq 0A30564147h 
     rnd dq 0A30564147h, 0, 0, 0
+    score dq 0  ;очки при собирании артефактов 
     msg_stuknulis db 24, 'You have hit the wall.', 13, 10
     msg_been_there db 28, 'You have been in this room', 13, 10
     clue_msg1 db "If you venture to the #"
@@ -18,6 +19,8 @@ section '.data' writable
     clue_msg2 db " steps to the goal.", 13, 10, "#"
     clue_msg3 db "No way.", 13, 10, "#"
     clue_msg_lst dq clue_msgW, clue_msgS, clue_msgE, clue_msgN  ;указатели на начала строк подсказок
+    art_msg db 27, "You have collected artifact"
+    score_msg db 14, "Your score is "
 
     ;сделать обращение по имени 
 
@@ -185,7 +188,7 @@ print_pascal_str:
     pop rax
     ret
 
-;on entry
+;on entry:
 ;rbx - pointer to starting room 
 ;r13 - target artifact (target id)
 dialogue:
@@ -194,13 +197,17 @@ dialogue:
     push rdx
     push rsi
 dlg_l1:
+    mov rax, [rbx+48]
+    ;add rax, [score]
+    ;call print_uint64
+    add [score], rax
     mov rax, [rbx+32]
-    cmp r13, rax  ;id, pointers on east, west, south, north
+    cmp r13, rax    ;id, pointers on east, west, south, north
     jne dlg_l2
     jmp dlg_win 
 dlg_l2:
     mov rdx, rax
-    shr rax, 24  ;y>>24  3 байт вправо ***y***x -> ******yx 
+    shr rax, 24     ;y>>24  3 байт вправо ***y***x -> ******yx 
     or rax, rdx
     add rax, 3030h ; +00
     mov word[room_descr1+22], ax  ;номер комнаты в строку 
@@ -257,12 +264,24 @@ dlg_l2ww:
 dlg_l3:
     mov rsi, r_dot
     call print_pascal_str
+    mov rsi, score_msg
+    call print_pascal_str
+    mov rax, [score]
+    call print_uint64
+    call newline
+    mov [rbx+48], rax 
+    or al, al 
+    jz dlg_l3a
+    mov rsi, art_msg
+    call print_pascal_str
+    call newline
+    mov qword[rbx+48], 0  ;8байт 
 dlg_l3a:
     mov rsi, room_qst
     call print_pascal_str
     mov rsi, dlg_buf 
     xor rdi, rdi
-    mov rdx, 1
+    mov rdx, 2   ;2 символа: буква+enter
 dlg_l3b:
     xor rax, rax
     syscall
@@ -309,7 +328,7 @@ dlg_l3z:
     call print_pascal_str
     jmp dlg_l1
 dlg_l30:
-    mov rbx, rax 
+    mov rbx, rax   ;переход к след комнате
     jmp dlg_l1
 dlg_win:
     mov rsi, msg_win
@@ -438,7 +457,6 @@ generate0:
     mov r10, [m]
     shl r10, 6 ;shift left *64
     add r10, rdi  ;south
-
     mov rdx, [n]
 g0_l1:
     xor r11, r11 ;west=0
@@ -493,7 +511,6 @@ g0_l3b:
 g0_l3c:
     add r11, 64
 g0_l3d:
-
     loop g0_l2
     mov r8, rdi
     mov rax, [m]
@@ -551,17 +568,27 @@ pf_NoWayWest:
     mov rbx, 0xFFFF00000000FFFF
     and r10, rbx   ;обнуляем биты r10 под rax (0)
     or r10, rax   ;rax в r10
-    lodsq 
-    lodsq
-    lodsq   ;add rsi, 24
-    add al, 23h   ;probel
+    lodsq  ;reserved 
+    lodsq  ;artifact 
+    ;call print_uint64
+    cmp al, 9   ;0-15 ; 48, 57 - digits, 65 - A
+    jna pf_lart
+    add al, 7
+pf_lart:
+    shl rax, 8   ;al на 1 байт влево 
+    add rax, 20203020h  ;20 - _ ; 30 - 0
+    shl rax, 16 
+    mov rbx, 0xFFFF00000000FFFF
+    and r9, rbx   ;обнуляем биты r9 под rax (0)
+    or r9, rax   ;rax в r9
+    lodsq  ;add rsi, 24
+    add al, 23h   ;space _
     cmp al, 23h   ;#
     je pf_lx
     add al, 06h 
 pf_lx:
     shl rax, 28h ;40
     or r10, rax
-
     mov qword[rdi], r8
     mov qword[rdi+65], r9
     mov qword[rdi+130], r10
@@ -611,15 +638,15 @@ slv_no_way:
 
 ;on entry: rsi (текущая комната указатель), rdx - color (степень 2), rdi - целевая комната (id), rcx (номер шага), rbx - минимальное количество шагов
 solve_aux:
-    mov rax, rcx 
-    call print_uint64
-    call newline
-    mov rax, rsi
-    call print_uint64
-    call newline
-    mov rax, rdi
-    call print_uint64
-    call newline
+    ;mov rax, rcx 
+    ;call print_uint64
+   ; call newline
+    ;mov rax, rsi
+    ;call print_uint64
+    ;call newline
+  ;  mov rax, rdi
+    ;call print_uint64
+    ;call newline
     push rsi
     cmp [rsi+32], rdi   ;адрес комнаты +32 = место id  
     jne slv_l1
@@ -666,15 +693,23 @@ slv_l2:
 
 ;попытка зайти в комнату 
 ;on entry: rax - комната, куда хотим войти, rdx - color 
+;попытка зайти в комнату 
+;returns:
+;rax - distance from this room to target, ZF=1 if way found (or -1 if no way / door closed / color-marked, ZF=0 in this case)
 try_enter: 
     or rax, rax
     jnz te_l1
+    dec rax
     ret
 te_l1:
     push rsi
     mov rsi, rax
     test qword[rsi+56], rdx   ;окрашена ли комната в цвет. Если цвет есть, то не заходим 
-    jnz te_l2
+    jz te_l1a
+    xor rax, rax
+    dec rax
+    jmp te_l2
+te_l1a:
     push rcx 
     inc rcx 
     call solve_aux
@@ -735,25 +770,26 @@ lock_doors:
     push rdi
     xor rbx, rbx  ;rbx=0
     mov rdx, [n]
-
 ld_l1:
     push rdx 
     mov rcx, [m]
 ld_l2:
     push rcx
-
+    call rand 
+    cmp al, 14
+    jb ld_l2a 
+    call rand 
+    and rax, 0Fh   ;младшие 4 бита для ограничения 0-15 
+    mov [rsi+48], rax
+ld_l2a:
     call check_three
     jb ld_north
-    
     add rsi, 64
     jmp ld_l3a
-
 ld_north:
     mov rdi, [rsi]
-
     or rdi, rdi
     jz ld_east
-
     push rsi
     mov rsi, rdi
     call check_three
