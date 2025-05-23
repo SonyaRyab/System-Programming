@@ -9,6 +9,7 @@ section '.data' writable
     gav_str dq 0A30564147h 
     rnd dq 0A30564147h, 0, 0, 0
     score dq 0  ;очки при собирании артефактов 
+    qst_amount dq 0   ;кол-во вопросов в тесте 
     msg_stuknulis db 24, 'You have hit the wall.', 13, 10
     msg_been_there db 28, 'You have been in this room', 13, 10
     clue_msg1 db "If you venture to the #"
@@ -21,6 +22,7 @@ section '.data' writable
     clue_msg_lst dq clue_msgW, clue_msgS, clue_msgE, clue_msgN  ;указатели на начала строк подсказок
     art_msg db 27, "You have collected artifact"
     score_msg db 14, "Your score is "
+    filename db "one.txt", 0
 
     ;сделать обращение по имени 
 
@@ -34,6 +36,7 @@ section '.data' writable
     r_comma db 2, ', '
     r_dot db 3, '.', 13, 10  ;. enter
     room_qst db 33, 'Where would you go? (E, N, W, S) ' ;33 bytes
+    cannot_open_file db 20, "Error opening file", 13, 10
 
 section '.bss' writable
     buffer rb 2600   ;строка-изображение  
@@ -43,7 +46,8 @@ section '.bss' writable
     pu64_buf rb 24   ;16+8 для 10-чных
     dlg_buf rb 16
     test_buf rb 8
-    ptr_buf rb 256  ;список указателей на вопросы, 32 шт 1 байт-кол-во, 2 байт-№ верного ответа 
+    ptr_buf rb 256  ;список указателей на вопросы, 10 шт; 1 байт-кол-во, 2 байт-№ верного ответа 
+    qst_buf rb 4096   ;буфер для вопросов 
 
 ;комната 6 байта + 2 байта стенки 
 ;5*65 байт - 1 ряд комнат, 1 комната - 6 байт
@@ -63,6 +67,61 @@ section '.bss' writable
 section '.text' executable
 
 _start:
+    mov rax, 2  ;open 
+    mov rdi, filename 
+    xor rsi, rsi  ;flags=0
+    mov rdx, 444o   ;444o - права доступа на чтение 
+    
+    syscall 
+    or rax, rax    ;ошибка при чтении 
+    jns qp_l0 
+    mov rsi, cannot_open_file
+    call print_pascal_str
+    jmp init_game
+
+
+;question parse
+qp_l0:
+    mov rdi, rax
+    xor rax, rax 
+    mov rsi, qst_buf
+    mov rdx, 1000h   ;размер буфера 4 Кб
+    syscall 
+    push rax
+    ;mov rcx, rax 
+    mov rax, 3   ;close file 
+    syscall 
+
+    mov rdi, ptr_buf 
+    mov rsi, qst_buf 
+    lodsw    ;
+    call convert_16 
+    
+    
+    movzx rax, al 
+    mov qword[qst_amount], rax 
+    pop rcx
+    mov rax, rcx  
+    call print_uint64
+qp_l3:
+    mov rax, rsi 
+    stosq 
+qp_l4:
+    lodsb 
+    cmp al, '#'
+    jne qp_l5
+    loop qp_l3
+    jmp qp_l6
+qp_l5:
+    loop qp_l4
+qp_l6:
+    mov ax, 2B2Dh   ;'+-'
+    mov rsi, qword[ptr_buf]
+    call jailed_string
+    mov rsi, qword[ptr_buf+72]
+    call jailed_string
+
+init_game:
     mov rax, 64h  ;100 = times
     mov rdi, rnd 
     syscall
@@ -135,6 +194,22 @@ tr_l2:
     loop tr_l1
     ret
 
+;on entry: ax - hex number 
+;on exit: 
+convert_16:
+    sub ax, 3030h  ;ax-48 ; ah-48, al-48  
+    cmp al, 09h   ;9 
+    jna qp_l1   
+    sub al, 7 
+    qp_l1:
+    cmp ah, 09h
+    jna qp_l2
+    sub ah, 7 
+    qp_l2:
+    shl al, 4
+    or al, ah
+    xor ah, ah 
+    ret
 gav:
 push rax
 push rcx
@@ -339,6 +414,25 @@ dlg_finish:
     pop rbx
     pop rax 
     ret
+
+
+question_test:
+    call rand    ;rax - random number 
+    xor rdx, rdx 
+    mov rcx, qst_amount     
+    div rcx    ;rcx - кол-во вопросов 
+    mov rsi,  qword[ptr_buf + rdx*8]   ;rdx - остаток от деления ранд числа/кол-во вопросов; rdx - № вопроса
+    lodsd 
+    
+    movzx rcx, ax  ;option count 
+    shr rax, 16 
+    movzx rdx, ax 
+    mov ax, 2B2Dh 
+    call jailed_string
+;запрашиваем ответ 
+;вернуть 0, если ответ верный, F - ответ неверный 
+    ret
+
 
 ;on entry: rbx - pointer on starting room, r13 - target id
 clue:
