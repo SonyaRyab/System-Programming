@@ -12,6 +12,7 @@ section '.data' writable
     qst_amount dq 0   ;кол-во вопросов в тесте 
     msg_stuknulis db 24, 'You have hit the wall.', 13, 10
     msg_been_there db 28, 'You have been in this room', 13, 10
+    no_file_msg db "Послушай, Дарагой, а где файл с тестом??", 13, 10, "#"
     clue_msg1 db "If you venture to the #"
     clue_msgN db "North: #"
     clue_msgE db "East: #"
@@ -19,6 +20,7 @@ section '.data' writable
     clue_msgW db "West: #"
     clue_msg2 db " steps to the goal.", 13, 10, "#"
     clue_msg3 db "No way.", 13, 10, "#"
+    clue_msg4 db "Go learn System Programming!", 13, 10, "#" 
     clue_msg_lst dq clue_msgW, clue_msgS, clue_msgE, clue_msgN  ;указатели на начала строк подсказок
     art_msg db 27, "You have collected artifact"
     score_msg db 14, "Your score is "
@@ -97,12 +99,9 @@ qp_l0:
     lodsw    ;
     call convert_16 
     
-    
     movzx rax, al 
     mov qword[qst_amount], rax 
     pop rcx
-    mov rax, rcx  
-    call print_uint64
 qp_l3:
     mov rax, rsi 
     stosq 
@@ -111,15 +110,9 @@ qp_l4:
     cmp al, '#'
     jne qp_l5
     loop qp_l3
-    jmp qp_l6
+    jmp init_game
 qp_l5:
     loop qp_l4
-qp_l6:
-    mov ax, 2B2Dh   ;'+-'
-    mov rsi, qword[ptr_buf]
-    call jailed_string
-    mov rsi, qword[ptr_buf+72]
-    call jailed_string
 
 init_game:
     mov rax, 64h  ;100 = times
@@ -415,28 +408,87 @@ dlg_finish:
     pop rax 
     ret
 
-
 question_test:
-    call rand    ;rax - random number 
+    push rsi 
+    push rdi 
+    push rdx
+    push rcx 
+    push rbx 
+    call rand    ;rax - random number of a question 
     xor rdx, rdx 
-    mov rcx, qst_amount     
+    mov rcx, [qst_amount]   ;значение    
     div rcx    ;rcx - кол-во вопросов 
+    mov rax, rdx 
+    call print_uint64
     mov rsi,  qword[ptr_buf + rdx*8]   ;rdx - остаток от деления ранд числа/кол-во вопросов; rdx - № вопроса
     lodsd 
-    
-    movzx rcx, ax  ;option count 
-    shr rax, 16 
-    movzx rdx, ax 
+    call convert_16    ;ax - 04, 16-> number 4
+    movzx rcx, ax  ;option count ;rcx - кол-во варинтов ответов
+    shr rax, 16   ;сдвиг, убираем 04, получаем верный вариант ответа 0401 -> 01 
+    call convert_16
+    movzx rdx, ax   ;rdx - верный ответ 
     mov ax, 2B2Dh 
     call jailed_string
+qt_l0:  
+    push rcx 
+    push rdx 
+    mov rsi, dlg_buf 
+    xor rdi, rdi
+    mov rdx, 2   ;2 символа: буква+enter
+qt_l1:
+    xor rax, rax
+    syscall
+    lodsb ;символ в al 
+    cmp al, 0Ah
+    je qt_l1
+    pop rdx 
+    pop rcx 
+    cmp al, 60h    ;маленькая буква 
+    jb qt_l2
+    sub al, 20h   ;большая буква
+qt_l2:
+    sub al, 41h   ;заглавная A 
+    jb qt_l0 
+    cmp al, cl    ;cl - кол-во вариантов ответа 
+    jnb qt_l0 
+    call print_uint64
+    call newline
+    mov rax, rdx 
+    call print_uint64
+    sub al, dl    ;!=0 - ответ неверный, al - введенный символ П, dl - верный ответ 
+    movzx rax, al   ;обнулили старшие байты rax (rax=0)
+    pop rbx 
+    pop rcx
+    pop rdx 
+    pop rdi 
+    pop rsi 
+
 ;запрашиваем ответ 
 ;вернуть 0, если ответ верный, F - ответ неверный 
     ret
 
-
 ;on entry: rbx - pointer on starting room, r13 - target id
 clue:
     push rax
+    mov rax, [qst_amount]
+    or rax, rax 
+    jnz clue_ll
+    mov rsi, no_file_msg
+    call jailed_string
+    pop rax 
+    ret
+clue_ll:
+    call gav 
+    call question_test
+    mov rax, rdx 
+    call print_uint64
+    or rax, rax 
+    jz clue_l0
+    mov rsi, clue_msg4
+    call jailed_string
+    pop rax 
+    ret
+clue_l0:
     push rbx 
     push rcx
     push rsi
