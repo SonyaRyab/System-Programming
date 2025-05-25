@@ -9,6 +9,7 @@ section '.data' writable
     gav_str dq 0A30564147h 
     rnd dq 0A30564147h, 0, 0, 0
     score dq 0  ;очки при собирании артефактов 
+    steps dq 0  ;шаги 
     qst_amount dq 0   ;кол-во вопросов в тесте 
     msg_stuknulis db 24, 'You have hit the wall.', 13, 10
     msg_been_there db 28, 'You have been in this room', 13, 10
@@ -24,21 +25,26 @@ section '.data' writable
     clue_msg_lst dq clue_msgW, clue_msgS, clue_msgE, clue_msgN  ;указатели на начала строк подсказок
     art_msg db 27, "You have collected artifact"
     score_msg db 14, "Your score is "
+    alive_msg db 16, 27, '[1;32mAlive', 27, '[0m' ;green 
+    dead_msg db 15, 27, '[5;30mDead', 27, '[0m'   ;black 
     filename db "one.txt", 0
-
-    ;сделать обращение по имени 
-
+    record_file db "record_file.dat", 0
+    msg_hello db 7, "Hello, "
+    msg_name db 19, "What is your name? "
     msg_win db 18, 'Congratulations!', 13, 10
+    msg_mode db 48, "Which mode do you prefer: hard (H) or easy (E)? "
     room_descr1 db 27, 'You are in the room #  .', 13, 10 ;32 bytes ;enter ;27 - length
     room_descr2 db 20, 'It has doors to the ' ;20 bytes
-    r_east db 4, 'East'
-    r_west db 4, 'West'
-    r_north db 5, 'North'
-    r_south db 5, 'South'
+    r_east db 15, 27, '[1;32mEast', 27, '[0m'     ;green ;15 ; 27-сигнал о краске ; '[0m' - красить закончили
+    r_west db 15, 27, '[1;35mWest', 27, '[0m'     ;violet
+    r_north db 16, 27, '[1;36mNorth', 27, '[0m'   ;cyan
+    r_south db 16, 27, '[1;31mSouth', 27, '[0m'   ;red
     r_comma db 2, ', '
     r_dot db 3, '.', 13, 10  ;. enter
     room_qst db 33, 'Where would you go? (E, N, W, S) ' ;33 bytes
     cannot_open_file db 20, "Error opening file", 13, 10
+    mode_flag db 0  
+    tab_char db 9
 
 section '.bss' writable
     buffer rb 2600   ;строка-изображение  
@@ -50,6 +56,9 @@ section '.bss' writable
     test_buf rb 8
     ptr_buf rb 256  ;список указателей на вопросы, 10 шт; 1 байт-кол-во, 2 байт-№ верного ответа 
     qst_buf rb 4096   ;буфер для вопросов 
+    user_buf rb 64     ;буфер для имен игроков 
+    records_buf rb 256  ;буфер для печати рекордов
+    
 
 ;комната 6 байта + 2 байта стенки 
 ;5*65 байт - 1 ряд комнат, 1 комната - 6 байт
@@ -69,59 +78,96 @@ section '.bss' writable
 section '.text' executable
 
 _start:
-    mov rax, 2  ;open 
-    mov rdi, filename 
-    xor rsi, rsi  ;flags=0
-    mov rdx, 444o   ;444o - права доступа на чтение 
-    
-    syscall 
-    or rax, rax    ;ошибка при чтении 
-    jns qp_l0 
+    mov rax, 2          ;open file 
+    mov rdi, filename   ;указатель на строку с именем файла 
+    xor rsi, rsi        ;flags=0 - флаги открытия readonly  
+    mov rdx, 444o       ;444o - права доступа на чтение (8-ричное представление)
+    syscall      
+    or rax, rax         ;ошибка при чтении-проверка знака (установка флагов), в rax - файловый дескриптор (неотрицательное число)/код ошибки (отрицательное число)
+    jns qp_l0           ;jump if not signed (SF-Signed Flag), перейти если нет отрицат знака 
     mov rsi, cannot_open_file
     call print_pascal_str
     jmp init_game
 
-
-;question parse
+;читает файл и сохраняет указатели на строки, начинающиеся с '#'
+;question_parse
 qp_l0:
-    mov rdi, rax
+    mov rdi, rax   ;файловый дескриптор (получен ранее)->rdi 
     xor rax, rax 
-    mov rsi, qst_buf
+    mov rsi, qst_buf  ;указатель на буфер для чтения 
     mov rdx, 1000h   ;размер буфера 4 Кб
-    syscall 
-    push rax
-    ;mov rcx, rax 
-    mov rax, 3   ;close file 
-    syscall 
+    syscall    ;read 
+    push rax   ;сохраняем кол-во прочитанных байт в стеке 
+    mov rax, 3   
+    syscall    ;close file 
 
-    mov rdi, ptr_buf 
+    mov rdi, ptr_buf  ;
     mov rsi, qst_buf 
-    lodsw    ;
+    lodsw            ;load 2 bytes (word) -> ax, rsi++ 
     call convert_16 
     
     movzx rax, al 
     mov qword[qst_amount], rax 
     pop rcx
 qp_l3:
-    mov rax, rsi 
-    stosq 
-qp_l4:
-    lodsb 
+    lodsb     ;load 1 byte -> ax, rsi++
     cmp al, '#'
     jne qp_l5
-    loop qp_l3
-    jmp init_game
+    mov rax, rsi 
+    stosq     ;store string quadword ;записывает 8 байт (rax) по адресу [rdi]
 qp_l5:
-    loop qp_l4
+    loop qp_l3
+    mov rsi, ptr_buf 
+    sub rdi, 8 
+    movsq    ;lodsq+stosq ;lodsq - load string quadword 
 
 init_game:
+    mov rsi, msg_name
+    call print_pascal_str
+    xor rax, rax  ;read 
+    mov rdi, rax 
+    mov rsi, user_buf+1    ;1 символ - длина введенного имени 
+    mov rdx, 63  ;оставшая длина буффера 
+    syscall 
+    mov rdi, rsi 
+    dec rdi  
+    stosb    ;длина имени - сдвиг 
+    mov rsi, msg_hello
+    call print_pascal_str
+    mov rsi, user_buf
+    call print_pascal_str
+l_mode:
+    mov rsi, msg_mode 
+    call print_pascal_str
+    mov rdx, 2    ;ввод 1 символа + enter 
+    xor rdi, rdi 
+    xor rax, rax 
+    mov rsi, dlg_buf
+    syscall 
+    lodsb 
+
+    cmp al, 'a'  ;буква маленькая 
+    jb l_mode_a
+    sub al, 32   ;между а и А = 32 символа 
+l_mode_a:
+    cmp al, 'H'
+    jne l_mode_easy
+    mov byte[mode_flag], 1  ;hard mode 
+    jmp init_random
+l_mode_easy:
+    cmp al, 'E'
+    jne l_mode
+    mov byte[mode_flag], 0
+
+init_random:
     mov rax, 64h  ;100 = times
-    mov rdi, rnd 
+    mov rdi, rnd  ;random 
     syscall
     mov rdx, rax
     shr rdx, 32
     xor rax, rdx
     xor qword[rnd], rax
+l_gen:
     mov rdi, rooms
     call generate0
     mov rsi, rooms
@@ -129,17 +175,133 @@ init_game:
     mov rdi, rooms+64*63   ;смещение на последнюю комнату от начала массива rooms 
     mov rdx, 1
     call solve
+    ;inc rax    ;rax =F -> inc=0 
+    ;jz l_gen   ;generate again 
+    mov al, [mode_flag]
+    cmp al, 1
+    je no_print 
     call print_field
+no_print:
     mov rbx, rooms
     mov r13, 0000000100000001h  ;двойные слова
     call dialogue
-
+    mov qword[dlg_buf], rax
+    mov rax, 2
+    mov rdi, record_file
+    mov rdx, 666o  
+    mov rsi, 441h   ;флаги открытия 
+    syscall 
+    mov rdi, rax 
+    mov rax, 1
+    mov rsi, user_buf
+    xor rdx, rdx 
+    mov dl, byte[rsi]    ;длина имени пользователя 
+    inc rdx 
+    syscall 
+    mov rsi, steps 
+    mov rdx, 8
+    mov rax, 1
+    syscall   ;записываем steps 
+    mov rsi, score 
+    mov rdx, 8
+    mov rax, 1
+    syscall
+    mov rsi, dlg_buf 
+    mov rdx, 8
+    mov rax, 1
+    syscall 
+    mov rax, 3
+    syscall   ;close 
+    mov rdi, record_file
+    call table_rec
 ;   call test_rand
     xor rdi, rdi
     mov rax, 60
     syscall
     ;mov rbx, [start_room]
     ;mov rbx, [rbx+40]  ;room on the right
+
+;таблица рекордов 
+;on entry: rdi - указатель на имя файла  
+;returns: rax - кол-во рекордов (сеансов игры)
+table_rec:
+    push rax 
+    push rdi 
+    push rsi 
+    push rdx
+    push rcx
+    xor rsi, rsi        ;flags=0 - флаги открытия readonly  
+    mov rdx, 444o
+    mov rax, 2
+    syscall
+    cmp rax, 0 
+    jnl table_l1
+    jmp table_exit
+table_l1:
+    mov rdi, rax 
+table_l2:
+    mov rsi, records_buf
+    mov rdx, 1       ;читаем 1 байт 
+    xor rax, rax 
+    syscall     ;чтение длины строки Pascal
+    lodsb       ;1 byte-> al, rsi++
+    cmp al, 1   ;0 or -1
+    jl table_close
+    movzx rdx, al 
+    xor rax, rax 
+    syscall     ;чтение строки 
+    mov byte[rsi+rax], 9    ;rax- прочитанные байты строки, rsi+rax=указанный байт ; 9-табуляция 
+    dec rsi 
+    inc byte[rsi]
+    call print_pascal_str
+    mov rdx, 24    ;score, steps, dead/alive 
+    xor rax, rax 
+    syscall     ;чтение score
+    lodsq 
+    call print_uint64
+    call print_tab
+    lodsq 
+    call print_uint64
+    call print_tab
+    lodsq 
+    or rax, rax 
+    jz table_alive 
+    mov rsi, dead_msg 
+    jmp table_print
+table_alive:
+    mov rsi, alive_msg  
+table_print:
+    call print_pascal_str
+    call newline
+    jmp table_l2
+table_close:
+    mov rax, 3
+    syscall   ;close file 
+table_exit: 
+    pop rcx 
+    pop rdx 
+    pop rsi 
+    pop rdi
+    pop rax  
+    ret
+    
+print_tab:
+    push rax
+    push rcx
+    push rdx 
+    push rsi
+    push rdi 
+    mov rax, 1 
+    mov rdi, rax 
+    mov rsi, tab_char 
+    mov rdx, rax 
+    syscall
+    pop rdi 
+    pop rsi 
+    pop rdx 
+    pop rcx 
+    pop rax 
+    ret 
 
 ;random numbers - метод Фон Неймана, меод срединного квадрата
 rand:
@@ -259,12 +421,13 @@ print_pascal_str:
 ;on entry:
 ;rbx - pointer to starting room 
 ;r13 - target artifact (target id)
+;returns: rax=0 (success), =Q (fail) 
 dialogue:
-    push rax
     push rbx 
     push rdx
     push rsi
 dlg_l1:
+    inc qword[steps]    ;ДОБАВИТЬ вывод кол-ва пройденных шагов на экран 
     mov rax, [rbx+48]
     ;add rax, [score]
     ;call print_uint64
@@ -401,11 +564,12 @@ dlg_l30:
 dlg_win:
     mov rsi, msg_win
     call print_pascal_str
+    xor rax, rax 
+
 dlg_finish:
     pop rsi
     pop rdx
     pop rbx
-    pop rax 
     ret
 
 question_test:
@@ -451,10 +615,6 @@ qt_l2:
     jb qt_l0 
     cmp al, cl    ;cl - кол-во вариантов ответа 
     jnb qt_l0 
-    call print_uint64
-    call newline
-    mov rax, rdx 
-    call print_uint64
     sub al, dl    ;!=0 - ответ неверный, al - введенный символ П, dl - верный ответ 
     movzx rax, al   ;обнулили старшие байты rax (rax=0)
     pop rbx 
@@ -480,8 +640,6 @@ clue:
 clue_ll:
     call gav 
     call question_test
-    mov rax, rdx 
-    call print_uint64
     or rax, rax 
     jz clue_l0
     mov rsi, clue_msg4
@@ -536,25 +694,26 @@ clue_l3:
 jailed_string:
     push rax
     push rcx
+    push rdx 
     push rsi
     push rdi
     push rsi  ;проходим строку до # считаем кол-во байт 
     mov rcx, rax
-    xor rdx, rdx
+    xor rdx, rdx    ;кол-во символов 
 js_l1:
     lodsb  ;смотрим байт rsi
     cmp al, '#'
     je js_l2
     or rcx, rcx 
     jz js_l1a
-    cmp al, cl ;al - rax, cl - rcx 
+    cmp al, cl    ;al - rax, cl - rcx 
     je js_l1b 
-    cmp al, ch ;ch - 2ой байт по меньшинству rcx 
+    cmp al, ch    ;ch - 2ой байт по меньшинству rcx 
     jne js_l1a
 js_l1b:
     mov byte[rsi-1], ' '  ;lodsb+1 байт 
 js_l1a:
-    inc rdx
+    inc rdx    
     jmp js_l1
 js_l2:
     pop rsi
@@ -563,6 +722,7 @@ js_l2:
     syscall  ;print string 
     pop rdi
     pop rsi
+    pop rdx
     pop rcx
     pop rax
     ret
@@ -767,6 +927,7 @@ pf_l4:
     ret
 
 ;*
+;on exit: rax - кол-во шагов, <0 - непроходимый лабиринт, >0 - лабиринт проходим  
 solve:
     push rbx   ;минимальная длина 
     push rcx 
