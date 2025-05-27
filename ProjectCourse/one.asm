@@ -1,4 +1,8 @@
 format ELF64
+include 'utilities.asm'
+include 'question_test.asm'
+include 'table_rec.asm'
+
 public _start
 
 section '.data' writable
@@ -59,7 +63,6 @@ section '.bss' writable
     user_buf rb 64     ;буфер для имен игроков 
     records_buf rb 256  ;буфер для печати рекордов
     
-
 ;комната 6 байта + 2 байта стенки 
 ;5*65 байт - 1 ряд комнат, 1 комната - 6 байт
 ;весь лабиринт 8*8, 5*65*8 = 2600 байт 
@@ -100,12 +103,10 @@ qp_l0:
     push rax   ;сохраняем кол-во прочитанных байт в стеке 
     mov rax, 3   
     syscall    ;close file 
-
-    mov rdi, ptr_buf  ;
+    mov rdi, ptr_buf  
     mov rsi, qst_buf 
     lodsw            ;load 2 bytes (word) -> ax, rsi++ 
     call convert_16 
-    
     movzx rax, al 
     mov qword[qst_amount], rax 
     pop rcx
@@ -144,8 +145,7 @@ l_mode:
     xor rax, rax 
     mov rsi, dlg_buf
     syscall 
-    lodsb 
-
+    lodsb    ;чтение 1 байта по адресу [rsi] в al; rsi++
     cmp al, 'a'  ;буква маленькая 
     jb l_mode_a
     sub al, 32   ;между а и А = 32 символа 
@@ -214,207 +214,28 @@ no_print:
     syscall   ;close 
     mov rdi, record_file
     call table_rec
-;   call test_rand
+    ;call test_rand
     xor rdi, rdi
     mov rax, 60
     syscall
     ;mov rbx, [start_room]
     ;mov rbx, [rbx+40]  ;room on the right
 
-;таблица рекордов 
-;on entry: rdi - указатель на имя файла  
-;returns: rax - кол-во рекордов (сеансов игры)
-table_rec:
-    push rax 
-    push rdi 
-    push rsi 
-    push rdx
-    push rcx
-    xor rsi, rsi        ;flags=0 - флаги открытия readonly  
-    mov rdx, 444o
-    mov rax, 2
-    syscall
-    cmp rax, 0 
-    jnl table_l1
-    jmp table_exit
-table_l1:
-    mov rdi, rax 
-table_l2:
-    mov rsi, records_buf
-    mov rdx, 1       ;читаем 1 байт 
-    xor rax, rax 
-    syscall     ;чтение длины строки Pascal
-    lodsb       ;1 byte-> al, rsi++
-    cmp al, 1   ;0 or -1
-    jl table_close
-    movzx rdx, al 
-    xor rax, rax 
-    syscall     ;чтение строки 
-    mov byte[rsi+rax], 9    ;rax- прочитанные байты строки, rsi+rax=указанный байт ; 9-табуляция 
-    dec rsi 
-    inc byte[rsi]
-    call print_pascal_str
-    mov rdx, 24    ;score, steps, dead/alive 
-    xor rax, rax 
-    syscall     ;чтение score
-    lodsq 
-    call print_uint64
-    call print_tab
-    lodsq 
-    call print_uint64
-    call print_tab
-    lodsq 
-    or rax, rax 
-    jz table_alive 
-    mov rsi, dead_msg 
-    jmp table_print
-table_alive:
-    mov rsi, alive_msg  
-table_print:
-    call print_pascal_str
-    call newline
-    jmp table_l2
-table_close:
-    mov rax, 3
-    syscall   ;close file 
-table_exit: 
-    pop rcx 
-    pop rdx 
-    pop rsi 
-    pop rdi
-    pop rax  
-    ret
-    
-print_tab:
-    push rax
-    push rcx
-    push rdx 
-    push rsi
-    push rdi 
-    mov rax, 1 
-    mov rdi, rax 
-    mov rsi, tab_char 
-    mov rdx, rax 
-    syscall
-    pop rdi 
-    pop rsi 
-    pop rdx 
-    pop rcx 
-    pop rax 
-    ret 
-
-;random numbers - метод Фон Неймана, меод срединного квадрата
-rand:
-    push rcx  ;counter
-    push rdx  ;используется при умножении
-    mov rax, [rnd]
-    mul rax  ;квадрат rax 
-    xor rax, rdx  
-    mov [rnd], rax
-    sub rcx, rcx  ;rcx=0
-rand_l1:
-    or rax, rax   ;проверка на 0
-    jz rand_l2
-    mov dl, al ; dl - младшие 4 бита из rax, al - 8 младших бит rax
-    and dl, 0xF ;1111 - младшие 4 бита 
-    mov byte[rcx+tmp2], dl
-    shr rax, 4
-    inc rcx
-    jmp rand_l1
-rand_l2:
-    shr rcx, 1  ;rcx/2
-    mov al, byte[rcx+tmp2] 
-    pop rdx
-    pop rcx
-    ret
-
-test_rand:
-    mov rcx, 100
-tr_l1:
-    push rcx
-    call rand
-    cmp al, 9  ;без символов . , 
-    jna tr_l2  ;без знака
-    add al, 7
-tr_l2:
-    add al, 30h
-    mov ah, 0xA  ;enter в столбик
-    mov word[tmp], ax
-    mov rax, 1
-    mov rdi, 1
-    mov rdx, 2
-    mov rsi, tmp
-    syscall
-    pop rcx
-    loop tr_l1
-    ret
-
-;on entry: ax - hex number 
-;on exit: 
-convert_16:
-    sub ax, 3030h  ;ax-48 ; ah-48, al-48  
-    cmp al, 09h   ;9 
-    jna qp_l1   
-    sub al, 7 
-    qp_l1:
-    cmp ah, 09h
-    jna qp_l2
-    sub ah, 7 
-    qp_l2:
-    shl al, 4
-    or al, ah
-    xor ah, ah 
-    ret
 gav:
-push rax
-push rcx
-push rdx
-push rsi
-push rdi
-mov rax, 1
-mov rdi, 1
-mov rsi, gav_str
-mov rdx, 5
-syscall
-pop rdi
-pop rsi
-pop rdx
-pop rcx
-pop rax
-ret
-
-newline:
     push rax
     push rcx
     push rdx
     push rsi
     push rdi
     mov rax, 1
-    mov rdi, rax
-    mov rdx, 2
-    mov rsi, cr
+    mov rdi, 1
+    mov rsi, gav_str
+    mov rdx, 5
     syscall
     pop rdi
     pop rsi
     pop rdx
     pop rcx
-    pop rax
-    ret
-
-;rsi - указатель на Паскалевскую строку 
-print_pascal_str:
-    push rax
-    push rdx
-    push rsi
-    push rdi
-    lodsb   ;прочитать 1 байт по адресу rsi ; al - length rsi, -> rdx, rsi+1 - text str
-    movzx rdx, al   ;zero extend: страший разряд rdx=0
-    mov rax, 1
-    mov rdi, 1
-    syscall
-    pop rdi
-    pop rsi
-    pop rdx
     pop rax
     ret
 
@@ -572,61 +393,6 @@ dlg_finish:
     pop rbx
     ret
 
-question_test:
-    push rsi 
-    push rdi 
-    push rdx
-    push rcx 
-    push rbx 
-    call rand    ;rax - random number of a question 
-    xor rdx, rdx 
-    mov rcx, [qst_amount]   ;значение    
-    div rcx    ;rcx - кол-во вопросов 
-    mov rax, rdx 
-    call print_uint64
-    mov rsi,  qword[ptr_buf + rdx*8]   ;rdx - остаток от деления ранд числа/кол-во вопросов; rdx - № вопроса
-    lodsd 
-    call convert_16    ;ax - 04, 16-> number 4
-    movzx rcx, ax  ;option count ;rcx - кол-во варинтов ответов
-    shr rax, 16   ;сдвиг, убираем 04, получаем верный вариант ответа 0401 -> 01 
-    call convert_16
-    movzx rdx, ax   ;rdx - верный ответ 
-    mov ax, 2B2Dh 
-    call jailed_string
-qt_l0:  
-    push rcx 
-    push rdx 
-    mov rsi, dlg_buf 
-    xor rdi, rdi
-    mov rdx, 2   ;2 символа: буква+enter
-qt_l1:
-    xor rax, rax
-    syscall
-    lodsb ;символ в al 
-    cmp al, 0Ah
-    je qt_l1
-    pop rdx 
-    pop rcx 
-    cmp al, 60h    ;маленькая буква 
-    jb qt_l2
-    sub al, 20h   ;большая буква
-qt_l2:
-    sub al, 41h   ;заглавная A 
-    jb qt_l0 
-    cmp al, cl    ;cl - кол-во вариантов ответа 
-    jnb qt_l0 
-    sub al, dl    ;!=0 - ответ неверный, al - введенный символ П, dl - верный ответ 
-    movzx rax, al   ;обнулили старшие байты rax (rax=0)
-    pop rbx 
-    pop rcx
-    pop rdx 
-    pop rdi 
-    pop rsi 
-
-;запрашиваем ответ 
-;вернуть 0, если ответ верный, F - ответ неверный 
-    ret
-
 ;on entry: rbx - pointer on starting room, r13 - target id
 clue:
     push rax
@@ -687,43 +453,6 @@ clue_l3:
     pop rsi
     pop rcx
     pop rbx 
-    pop rax
-    ret
-
-;on entry: rsi - pointer on string, ah, al - characters to erase 
-jailed_string:
-    push rax
-    push rcx
-    push rdx 
-    push rsi
-    push rdi
-    push rsi  ;проходим строку до # считаем кол-во байт 
-    mov rcx, rax
-    xor rdx, rdx    ;кол-во символов 
-js_l1:
-    lodsb  ;смотрим байт rsi
-    cmp al, '#'
-    je js_l2
-    or rcx, rcx 
-    jz js_l1a
-    cmp al, cl    ;al - rax, cl - rcx 
-    je js_l1b 
-    cmp al, ch    ;ch - 2ой байт по меньшинству rcx 
-    jne js_l1a
-js_l1b:
-    mov byte[rsi-1], ' '  ;lodsb+1 байт 
-js_l1a:
-    inc rdx    
-    jmp js_l1
-js_l2:
-    pop rsi
-    mov rdi, 1
-    mov rax, 1
-    syscall  ;print string 
-    pop rdi
-    pop rsi
-    pop rdx
-    pop rcx
     pop rax
     ret
 
@@ -1196,83 +925,3 @@ ld_l4:
     pop rcx
     pop rax
     ret
-
-;On entry: rax
-print_uint64:
-    push rdx
-    push rax
-    push rcx
-    push rdi
-    push rsi
-    mov rdx, rax
-    mov rdi, pu64_buf
-    mov rcx, 16
-pu64_l0:
-    rol rdx, 4
-    mov rax, rdx
-    and al, 0xF
-    cmp al, 9
-    jna pu64_l1
-    add al, 7
-pu64_l1:
-    add al, 30h   ;0
-    stosb 
-    loop pu64_l0
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, pu64_buf
-    mov rdx, 16
-    syscall
-    pop rsi
-    pop rdi
-    pop rcx
-    pop rax
-    pop rdx
-    ret
-
-;on entry: rax
-print_dec:
-    push rax
-    push rbx 
-    push rcx
-    push rdx
-    push rdi
-    push rsi
-    mov rdi, pu64_buf
-    mov rbx, 10
-    xor rcx, rcx    ;для syscall, кол-во цифр в частном 
-pd_l1:
-    xor rdx, rdx
-    div rbx       ;rdx - остаток, rax - частное 
-    add dl, 30h   ;+0 для печати на экран 
-    mov [rdi], dl  ;rdi - указатель на текущее положение строки для вывода, dl - младшмй байт rdx, остаток от деления на 10 
-    inc rdi 
-    inc rcx 
-    or rax, rax 
-    jnz pd_l1
-    mov rsi, pu64_buf   
-    dec rdi 
-;rsi - указатель на 1 цифру, rdi - на последнюю цифру 
-pd_l2:
-    cmp rsi, rdi 
-    jae pd_l3    ;if above or equal 
-    mov al, [rsi]  ;в al - 1я цифра (левая)
-    xchg al, [rdi]   ;замена al -> последняя цифра, первая al -> в последнюю rdi
-    mov [rsi], al   ;al - последняя, ее в 1ю цифру 
-    inc rsi 
-    dec rdi 
-    jmp pd_l2
-
-pd_l3:
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, pu64_buf
-    mov rdx, rcx 
-    syscall   ;вывод 
-    pop rsi 
-    pop rdi 
-    pop rdx 
-    pop rcx 
-    pop rbx 
-    pop rax 
-    ret 
